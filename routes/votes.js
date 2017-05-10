@@ -2,13 +2,20 @@ var express = require('express');
 var router = express.Router();
 var redis = require('redis');
 var availableCountries = ['italy', 'spain'];
+var client = redis.createClient();
+
+client.on("error", function(err) {
+  console.log("Error ", err);
+  return;
+});
 
 /* GET total votes. */
 router.get('/total', function(req, res, next) {
   var success = false,
-    country = req.param('country'),
+    country = req.query['country'],
     posVotesTotal = 1,
-    negVotesTotal = 2;
+    negVotesTotal = 2,
+    multi;
 
   if (country === undefined) {
     res.status(400);
@@ -21,26 +28,26 @@ router.get('/total', function(req, res, next) {
     return;
   }
 
-  var client = redis.createClient();
-  client.get(country + "_pos", function(err, posVotes) {
+  multi = client.multi();
+
+  multi.get(country + "_pos");
+  multi.get(country + "_neg");
+
+  multi.exec(function(err, replies) {
     if (err) throw err;
-    posVotesTotal = +posVotes;
-    client.get(country + "_neg", function(err, negVotes) {
-      if (err) throw err;
-      negVotesTotal = +negVotes;
+    var posVotesTotal = replies[0],
+      negVotesTotal = replies[1];
 
-      res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-      res.header('Expires', '-1');
-      res.header('Pragma', 'no-cache');
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
 
-      res.json(
-        {
-          country: country,
-          percent: posVotesTotal / (posVotesTotal + negVotesTotal)
-        }
-      );
-      client.quit();
-    });
+    res.json(
+      {
+        country: country,
+        percent: posVotesTotal / (posVotesTotal + negVotesTotal)
+      }
+    );
   });
 });
 
@@ -49,7 +56,8 @@ router.post('/cast', function(req, res, next) {
     data = req.body,
     country = data.country,
     votesPos = +data.positive,
-    votesNeg = +data.negative;
+    votesNeg = +data.negative,
+    multi;
 
   if (availableCountries.indexOf(country.toLowerCase()) === -1) {
     res.status(400);
@@ -57,29 +65,26 @@ router.post('/cast', function(req, res, next) {
     return;
   }
 
-  var client = redis.createClient();
-  client.on("error", function(err) {
-    console.log("Error ", err);
-    client.quit();
-    return;
-  })
-  client.incrby(country + "_pos", votesPos, function(err, posVotes) {
+  multi = client.multi();
+
+  multi.incrby(country + "_pos", votesPos);
+  multi.incrby(country + "_neg", votesNeg);
+
+  multi.exec(function(err, replies) {
     if (err) throw err;
-    client.incrby(country + "_neg", votesNeg, function(err, negVotes) {
-      if (err) throw err;
+    var posVotesTotal = replies[0],
+      negVotesTotal = replies[1];
 
-      res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-      res.header('Expires', '-1');
-      res.header('Pragma', 'no-cache');
+    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.header('Expires', '-1');
+    res.header('Pragma', 'no-cache');
 
-      res.json(
-        {
-          country: country,
-          percent: posVotes / (posVotes + negVotes)
-        }
-      );
-      client.quit();
-    });
+    res.json(
+      {
+        country: country,
+        percent: posVotesTotal / (posVotesTotal + negVotesTotal)
+      }
+    );
   });
 });
 
