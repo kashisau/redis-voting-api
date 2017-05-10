@@ -4,6 +4,8 @@ var redis = require('redis');
 var availableCountries = ['italy', 'spain'];
 var client = redis.createClient();
 
+const VOTES_MAX = 100;
+
 client.on("error", function(err) {
   console.log("Error ", err);
   return;
@@ -63,6 +65,12 @@ router.post('/cast', function(req, res, next) {
     res.json({success: success, error: "Country not listed"});
     return;
   }
+
+  // Enforce a valid range for our votes.
+  if (votesPos < 0) votesPos = 0;
+  if (votesNeg < 0) votesNeg = 0;
+  votesPos = Math.min(votesPos, VOTES_MAX);
+  votesNeg = Math.min(votesNeg, VOTES_MAX);
 
   multi = client.multi();
 
