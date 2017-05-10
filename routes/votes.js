@@ -9,7 +9,14 @@ client.on("error", function(err) {
   return;
 });
 
-/* GET total votes. */
+/**
+ * GET /total?country=[country]
+ *
+ * This method takes a `country` parameter as a query string and uses it to
+ * fetch the positive and negative votes for that country from the Redis server.
+ * The result is fetched as a JSON object, with properties `country`
+ * (lowercase) and `percent`.
+ */
 router.get('/total', function(req, res, next) {
   var success = false,
     country = req.query['country'],
@@ -33,24 +40,16 @@ router.get('/total', function(req, res, next) {
   multi.get(country + "_pos");
   multi.get(country + "_neg");
 
-  multi.exec(function(err, replies) {
-    if (err) throw err;
-    var posVotesTotal = replies[0],
-      negVotesTotal = replies[1];
-
-    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-    res.header('Expires', '-1');
-    res.header('Pragma', 'no-cache');
-
-    res.json(
-      {
-        country: country,
-        percent: posVotesTotal / (posVotesTotal + negVotesTotal)
-      }
-    );
-  });
+  multi.exec((err, results) => reportVotes(err, results, country, res));
 });
 
+/**
+ * POST /cast
+ *
+ * Handles a POST request with the urlencoded body parameters `country`,
+ * `positive` and `negative`. This will be used to increment the positive and
+ * negative vote counters for the specified country.
+ */
 router.post('/cast', function(req, res, next) {
   var success = false,
     data = req.body,
@@ -70,22 +69,35 @@ router.post('/cast', function(req, res, next) {
   multi.incrby(country + "_pos", votesPos);
   multi.incrby(country + "_neg", votesNeg);
 
-  multi.exec(function(err, replies) {
-    if (err) throw err;
-    var posVotesTotal = replies[0],
-      negVotesTotal = replies[1];
-
-    res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
-    res.header('Expires', '-1');
-    res.header('Pragma', 'no-cache');
-
-    res.json(
-      {
-        country: country,
-        percent: posVotesTotal / (posVotesTotal + negVotesTotal)
-      }
-    );
-  });
+  multi.exec((err, results) => reportVotes(err, results, country, res));
 });
+
+/**
+ * This method is used by both the vote casting and vote lookup methods to
+ * determine the current status of the votes.
+ * @param err {Error} An error object containing the error message if such an
+ *                    error exists.
+ * @param results {Number[]}  The `positive` and `negative` votes for the
+ *                            country (as supplied by the Redis connector).
+ * @param country {String}  The name of the country for which we're reporting.
+ * @param res {express.Router.res}  The Express.js response object to call the
+ *                                  response to.
+ */
+var reportVotes = function(err, results, country, res) {
+  if (err) throw err;
+  var posVotesTotal = results[0],
+    negVotesTotal = results[1];
+
+  res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+  res.header('Expires', '-1');
+  res.header('Pragma', 'no-cache');
+
+  res.json(
+    {
+      country: country,
+      percent: posVotesTotal / (posVotesTotal + negVotesTotal)
+    }
+  );
+};
 
 module.exports = router;
