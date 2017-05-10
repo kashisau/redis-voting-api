@@ -23,7 +23,7 @@ router.get('/total', function(req, res, next) {
   var success = false,
     country = req.query['country'],
     posVotesTotal = 1,
-    negVotesTotal = 2,
+    negVotesTotal = 1,
     multi;
 
   if (country === undefined) {
@@ -93,8 +93,8 @@ router.post('/cast', function(req, res, next) {
  */
 var reportVotes = function(err, results, country, res) {
   if (err) throw err;
-  var posVotesTotal = results[0],
-    negVotesTotal = results[1];
+  var posVotesTotal = +results[0],
+    negVotesTotal = +results[1];
 
   res.header('Cache-Control', 'private, no-cache, no-store, must-revalidate');
   res.header('Expires', '-1');
